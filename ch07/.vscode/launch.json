@@ -11,7 +11,7 @@
             "mode": "auto",
             "program": "${fileDirname}",
             "env": {},
-            "args": ["E:\\test\\golua\\go\\luatools\\ch7.out"]
+            "args": ["E:\\test\\golua\\golua\\luatools\\ch7.out"]
         }
     ]
 }
