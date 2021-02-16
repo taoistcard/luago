@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	. "luago/api"
 	. "luago/compiler/lexer"
+	"luago/compiler/parser"
 	"os"
 )
 
@@ -26,7 +28,8 @@ func main() {
 		// //ls.Load(data, os.Args[1], "b")
 		// ls.Load(data, "chunk", "b")
 		// ls.Call(0, 0)
-		testLexer(string(data), os.Args[1])
+		//testLexer(string(data), os.Args[1])
+		testParser(string(data), os.Args[1])
 	}
 }
 
@@ -41,6 +44,15 @@ func testLexer(chunk, chunkName string) {
 		}
 
 	}
+}
+
+func testParser(chunk, chunkName string) {
+	ast := parser.Parse(chunk, chunkName)
+	b, err := json.Marshal(ast)
+	if err != nil {
+		panic(err)
+	}
+	println(string(b))
 }
 
 func kindToCategory(kind int) string {

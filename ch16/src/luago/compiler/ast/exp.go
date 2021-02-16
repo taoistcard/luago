@@ -70,7 +70,7 @@ type ParensExp struct {
 type TableAccessExp struct {
 	LastLine  int // line of "]"
 	PrefixExp Exp
-	KeyExps   Exp
+	KeyExp    Exp
 }
 type FuncCallExp struct {
 	Line      int //line of "("
