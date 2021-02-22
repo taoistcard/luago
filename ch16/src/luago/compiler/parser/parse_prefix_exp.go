@@ -32,8 +32,11 @@ func _finishPrefixExp(lexer *Lexer, exp Exp) Exp {
 		case TOKEN_SEP_COLON, TOKEN_SEP_LPAREN,
 			TOKEN_SEP_LCURLY, TOKEN_STRING:
 			exp = _finishFuncCallExp(lexer, exp) // [`:`Name] args
+		default:
+			return exp
 		}
 	}
+	return exp
 }
 
 func parseParensExp(lexer *Lexer) Exp {

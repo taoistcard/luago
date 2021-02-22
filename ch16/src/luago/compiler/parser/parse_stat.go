@@ -5,6 +5,25 @@ import (
 	. "luago/compiler/lexer"
 )
 
+var _statEmpty = &EmptyStat{}
+
+/*
+stat ::=  ‘;’
+	| break
+	| ‘::’ Name ‘::’
+	| goto Name
+	| do block end
+	| while exp do block end
+	| repeat block until exp
+	| if exp then block {elseif exp then block} [else block] end
+	| for Name ‘=’ exp ‘,’ exp [‘,’ exp] do block end
+	| for namelist in explist do block end
+	| function funcname funcbody
+	| local function Name funcbody
+	| local namelist [‘=’ explist]
+	| varlist ‘=’ explist
+	| functioncall
+*/
 func parseStat(lexer *Lexer) Stat {
 	switch lexer.LookAhead() {
 	case TOKEN_SEP_SEMI:
@@ -34,16 +53,19 @@ func parseStat(lexer *Lexer) Stat {
 	}
 }
 
+// ;
 func parseEmptyStat(lexer *Lexer) *EmptyStat {
 	lexer.NextTokenOfKind(TOKEN_SEP_SEMI) // ';'
-	return &EmptyStat{}
+	return _statEmpty
 }
 
+// break
 func parseBreakStat(lexer *Lexer) *BreakStat {
 	lexer.NextTokenOfKind(TOKEN_KW_BREAK) // break
 	return &BreakStat{lexer.Line()}
 }
 
+// ‘::’ Name ‘::’
 func parseLabelStat(lexer *Lexer) *LabelStat {
 	lexer.NextTokenOfKind(TOKEN_SEP_LABEL) // ::
 	_, name := lexer.NextIdentifier()      //name
@@ -51,12 +73,14 @@ func parseLabelStat(lexer *Lexer) *LabelStat {
 	return &LabelStat{name}
 }
 
+// goto Name
 func parseGotoStat(lexer *Lexer) *GotoStat {
 	lexer.NextTokenOfKind(TOKEN_KW_GOTO) //goto
 	_, name := lexer.NextIdentifier()    //name
 	return &GotoStat{name}
 }
 
+// do block end
 func parseDoStat(lexer *Lexer) *DoStat {
 	lexer.NextTokenOfKind(TOKEN_KW_DO)  //do
 	block := parseBlock(lexer)          //block
@@ -64,6 +88,7 @@ func parseDoStat(lexer *Lexer) *DoStat {
 	return &DoStat{block}
 }
 
+// while exp do block end
 func parseWhileStat(lexer *Lexer) *WhileStat {
 	lexer.NextTokenOfKind(TOKEN_KW_WHILE) //while
 	exp := parseExp(lexer)                //exp
@@ -73,6 +98,7 @@ func parseWhileStat(lexer *Lexer) *WhileStat {
 	return &WhileStat{exp, block}
 }
 
+// repeat block until exp
 func parseRepeatStat(lexer *Lexer) *RepeatStat {
 	lexer.NextTokenOfKind(TOKEN_KW_REPEAT) //REPEAT
 	block := parseBlock(lexer)             //block
@@ -81,6 +107,7 @@ func parseRepeatStat(lexer *Lexer) *RepeatStat {
 	return &RepeatStat{block, exp}
 }
 
+// if exp then block {elseif exp then block} [else block] end
 func parseIfStat(lexer *Lexer) *IfStat {
 	exps := make([]Exp, 0, 4)
 	blocks := make([]*Block, 0, 4)
@@ -107,6 +134,8 @@ func parseIfStat(lexer *Lexer) *IfStat {
 	return &IfStat{exps, blocks}
 }
 
+// for Name ‘=’ exp ‘,’ exp [‘,’ exp] do block end
+// for namelist in explist do block end
 func parseForStat(lexer *Lexer) Stat {
 	lineOfFor, _ := lexer.NextTokenOfKind(TOKEN_KW_FOR)
 	_, name := lexer.NextIdentifier()
@@ -117,6 +146,7 @@ func parseForStat(lexer *Lexer) Stat {
 	}
 }
 
+// for Name ‘=’ exp ‘,’ exp [‘,’ exp] do block end
 func _finishForNumStat(lexer *Lexer, lineOfFor int, varName string) *ForNumStat {
 	lexer.NextTokenOfKind(TOKEN_OP_ASSIGN) // for name `=`
 	initExp := parseExp(lexer)             // exp
@@ -137,6 +167,9 @@ func _finishForNumStat(lexer *Lexer, lineOfFor int, varName string) *ForNumStat 
 	return &ForNumStat{lineOfFor, lineOfDo, varName, initExp, limitExp, stepExp, block}
 }
 
+// for namelist in explist do block end
+// namelist ::= Name {‘,’ Name}
+// explist ::= exp {‘,’ exp}
 func _finishForInStat(lexer *Lexer, name0 string) *ForInStat {
 	nameList := _finishNameList(lexer, name0)         // for name list
 	lexer.NextTokenOfKind(TOKEN_KW_IN)                // in
@@ -147,6 +180,7 @@ func _finishForInStat(lexer *Lexer, name0 string) *ForInStat {
 	return &ForInStat{lineOfDo, nameList, expList, block}
 }
 
+// namelist ::= Name {‘,’ Name}
 func _finishNameList(lexer *Lexer, name0 string) []string {
 	names := []string{name0}
 	for lexer.LookAhead() == TOKEN_SEP_COMMA {
@@ -157,6 +191,8 @@ func _finishNameList(lexer *Lexer, name0 string) []string {
 	return names
 }
 
+// local function Name funcbody
+// local namelist [‘=’ explist]
 func parseLocalAssignOrFuncDefStat(lexer *Lexer) Stat {
 	lexer.NextTokenOfKind(TOKEN_KW_LOCAL)
 	if lexer.LookAhead() == TOKEN_KW_FUNCTION {
@@ -166,12 +202,29 @@ func parseLocalAssignOrFuncDefStat(lexer *Lexer) Stat {
 	}
 }
 
+/*
+http://www.lua.org/manual/5.3/manual.html#3.4.11
+
+function f() end          =>  f = function() end
+function t.a.b.c.f() end  =>  t.a.b.c.f = function() end
+function t.a.b.c:f() end  =>  t.a.b.c.f = function(self) end
+local function f() end    =>  local f; f = function() end
+
+The statement `local function f () body end`
+translates to `local f; f = function () body end`
+not to `local f = function () body end`
+(This only makes a difference when the body of the function
+ contains references to f.)
+*/
+// local function Name funcbody
 func _finishLocalFuncDefStat(lexer *Lexer) *LocalFuncDefStat {
 	lexer.NextTokenOfKind(TOKEN_KW_FUNCTION) //local
 	_, name := lexer.NextIdentifier()        //name
 	fdExp := parseFuncDefExp(lexer)
 	return &LocalFuncDefStat{name, fdExp}
 }
+
+// local namelist [‘=’ explist]]
 func _finishLocalVarDeclStat(lexer *Lexer) *LocalVarDeclStat {
 	_, name0 := lexer.NextIdentifier()        // local name
 	nameList := _finishNameList(lexer, name0) // {`,` name}
@@ -184,6 +237,8 @@ func _finishLocalVarDeclStat(lexer *Lexer) *LocalVarDeclStat {
 	return &LocalVarDeclStat{lastLine, nameList, expList}
 }
 
+// varlist ‘=’ explist
+// functioncall
 func parseAssignOrFuncCallStat(lexer *Lexer) Stat {
 	prefixExp := parsePrefixExp(lexer)
 	if fc, ok := prefixExp.(*FuncCallExp); ok {
@@ -193,6 +248,7 @@ func parseAssignOrFuncCallStat(lexer *Lexer) Stat {
 	}
 }
 
+// varlist ‘=’ explist |
 func parseAssignStat(lexer *Lexer, var0 Exp) *AssignStat {
 	varList := _finishVarList(lexer, var0) // varlist
 	lexer.NextTokenOfKind(TOKEN_OP_ASSIGN) // =
@@ -221,6 +277,11 @@ func _checkVar(lexer *Lexer, exp Exp) Exp {
 	panic("unreachable!")
 }
 
+// function funcname funcbody
+// funcname ::= Name {‘.’ Name} [‘:’ Name]
+// funcbody ::= ‘(’ [parlist] ‘)’ block end
+// parlist ::= namelist [‘,’ ‘...’] | ‘...’
+// namelist ::= Name {‘,’ Name}
 func parseFuncDefStat(lexer *Lexer) *AssignStat {
 	lexer.NextTokenOfKind(TOKEN_KW_FUNCTION) //function
 	fnExp, hasColon := _parseFuncName(lexer) //funcname
@@ -250,7 +311,7 @@ func _parseFuncName(lexer *Lexer) (exp Exp, hasColon bool) {
 	if lexer.LookAhead() == TOKEN_SEP_COLON {
 		lexer.NextToken()
 		line, name := lexer.NextIdentifier()
-		idx := StringExp{line, name}
+		idx := &StringExp{line, name}
 		exp = &TableAccessExp{line, exp, idx}
 		hasColon = true
 	}

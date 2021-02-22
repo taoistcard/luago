@@ -9,7 +9,7 @@ import (
 func parseExpList(lexer *Lexer) []Exp {
 	exps := make([]Exp, 0, 4)
 	exps = append(exps, parseExp(lexer))
-	for lexer.LookAhead() == TOKEN_SEP_COMMA { // {
+	for lexer.LookAhead() == TOKEN_SEP_COMMA { // ,
 		lexer.NextToken()
 		exps = append(exps, parseExp(lexer))
 	}
@@ -45,7 +45,8 @@ func parseExp12(lexer *Lexer) Exp { // exp11 {or exp11}
 	exp := parseExp11(lexer)
 	for lexer.LookAhead() == TOKEN_OP_OR {
 		line, op, _ := lexer.NextToken()
-		exp = &BinopExp{line, op, exp, parseExp11(lexer)}
+		lor := &BinopExp{line, op, exp, parseExp11(lexer)}
+		exp = optimizeLogicalOr(lor)
 	}
 	return exp
 }
@@ -236,11 +237,12 @@ func parseNumberExp(lexer *Lexer) Exp {
 }
 
 func parseFuncDefExp(lexer *Lexer) *FuncDefExp {
-	line := lexer.Line() //key word function is skipped
-	lexer.NextTokenOfKind(TOKEN_SEP_LPAREN)
-	parList, isVararg := _parseParList(lexer)
-	block := parseBlock(lexer)
-	lastLine, _ := lexer.NextTokenOfKind(TOKEN_KW_END)
+	line := lexer.Line()                               //key word function is skipped
+	lexer.NextTokenOfKind(TOKEN_SEP_LPAREN)            // (
+	parList, isVararg := _parseParList(lexer)          //var list
+	lexer.NextTokenOfKind(TOKEN_SEP_RPAREN)            // )
+	block := parseBlock(lexer)                         //block
+	lastLine, _ := lexer.NextTokenOfKind(TOKEN_KW_END) //end
 	return &FuncDefExp{line, lastLine, parList, isVararg, block}
 }
 
